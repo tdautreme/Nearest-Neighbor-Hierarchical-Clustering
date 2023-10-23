@@ -3,7 +3,17 @@ import numpy as np
 from utils import get_datasets, cluster_screenshot, generate_colors
 from union_find import process_propagation
 from sklearn.neighbors import NearestNeighbors
+import numba as nb
 
+'''
+    Optimisation ideas:
+        instead of making nearest neighbors with all points with a bad custom_distance methods,
+        we can make unique_label_count nearest neighbors with all point from the same label with all other points
+
+        make a fast version of NNHC wnich use the centroid of each label group as a point to compare with other centroid
+'''
+
+@nb.njit(nopython=True)
 def custom_distance(x, y):
     '''
         /!\ this methods take to much time to compute, it's the last thing to optimize to make a good clusturing algorithm
@@ -11,7 +21,7 @@ def custom_distance(x, y):
     # if same label, distance is infinite because we don't want to merge points with same label
     if x[-1] == y[-1]:
         return np.inf
-    return np.linalg.norm(x[:-2] - y[:-2])
+    return np.linalg.norm(x[:-1] - y[:-1])
 
     '''
         This is fast but we can't compare labels...
@@ -34,9 +44,10 @@ class NNHC:
             '''
                 Here is the problem, check at custom_distance method
             '''
+            x_without_ids = np.delete(x, -2, axis=1)
             checkpoint_time = time.time()
-            neigh = NearestNeighbors(n_neighbors=1, algorithm="ball_tree", metric=custom_distance).fit(x)
-            distances, indices = neigh.kneighbors(x, return_distance=True)
+            neigh = NearestNeighbors(n_neighbors=1, algorithm="ball_tree", metric=custom_distance).fit(x_without_ids)
+            distances, indices = neigh.kneighbors(x_without_ids, return_distance=True)
             print("NearestNeighbors time: ", time.time() - checkpoint_time)
 
             indices = indices.reshape(-1)
@@ -103,7 +114,6 @@ class NNHC:
                 break
         
         y = x[:, -1]
-        # all different labels
         all_differents_labels = np.unique(y)
         # normalize label using indices (liek 0, 1, 2, 3, 4, ...)
         for i, label in enumerate(all_differents_labels):
@@ -113,10 +123,12 @@ class NNHC:
         return self
 
 if __name__ == "__main__":
-    datasets = get_datasets(n_samples=200, random_seed=42)
+    datasets = get_datasets(n_samples=10000, random_seed=42)
     for dataset_name, (dataset_points, clusters_count) in datasets.items():
+        print(f"Clustering {dataset_name} with {clusters_count} clusters")
         nnhc = NNHC(n_clusters=clusters_count)
         nnhc.fit(x=dataset_points)
         color_map = generate_colors(len(nnhc.labels))
         cluster_screenshot(dataset_points, nnhc.y, path=f"outputs/{dataset_name}.png", color_map=color_map, show=False)
+        print("")
         

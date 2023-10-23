@@ -1,5 +1,5 @@
 # nearest-neighbor-hierarchical-clustering
-This algorithm is an Agglomerative Hierarchical Clustering method that relies on the concept of nearest neighbors. Initially, each data point is assigned its own unique label. Then, as long as there are more unique labels than a predefined number of clusters (denoted as 'n_clusters'), each data point identifies its nearest neighbor with a different label and adopts that label.
+This algorithm is an Agglomerative Hierarchical Clustering method that relies on the concept of nearest neighbors.<br> Initially, each data point is assigned its own unique label.<br> Then, as long as there are more unique labels than a predefined number of clusters (denoted as 'n_clusters'), each data point identifies its nearest neighbor with a different label and adopts that label.
 
 ![noisy_circles](https://github.com/tdautreme/Nearest-Neighbor-Hierarchical-Clustering/blob/main/outputs/noisy_circles.png?raw=true)
 ![noisy_moons](https://github.com/tdautreme/Nearest-Neighbor-Hierarchical-Clustering/blob/main/outputs/noisy_moons.png?raw=true)

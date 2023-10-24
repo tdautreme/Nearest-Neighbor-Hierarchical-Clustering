@@ -42,6 +42,8 @@ def process_propagation(propagation_array):
     return result_array
 
 if __name__ == "__main__":
-    test = np.array([[1, 2], [2, 1], [3, 4], [5, 4], [6, 2]])
+    # test = np.array([[1, 2], [2, 1], [3, 4], [5, 4], [6, 2]])
+    test = np.array([[0, 1], [1, 0], [2, 3], [3, 0], [5, 0], [6, 0]])
     test += 10
+    test = [[50, 51], [51, 50], [52, 50], [53, 50], [54, 50], [55, 50], [58, 50], [59, 50], [61, 61], [62, 50], [63, 50], [66, 50], [67, 50], [72, 50], [73, 50], [75, 75], [77, 50]]
     print(process_propagation(test))

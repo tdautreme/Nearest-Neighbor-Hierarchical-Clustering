@@ -16,7 +16,6 @@ import numba as nb
 def reduce_label_propagation(label_propagation_array, distances=None):
     # remove distances for process if needed
     propagation_order_array = process_propagation(label_propagation_array)
-    print("propagation_order_array: ", propagation_order_array)
     if distances is not None:
         # label_propagation_array[:, 0] and propagation_order_array[:, 0] are the keys to sert indices in the good order
         # label_propagation_array = [[0, 1], [1, 2], [2, 3], [3, 4], [4, 5]]
@@ -144,23 +143,20 @@ def get_label_propagation_array_nn_splitted_centroid(x, labels):
             nearest_l2_point_from_l1_centroid = x[labels == label_2][np.argmin(np.linalg.norm(x[labels == label_2] - centroid_1, axis=1))]
             nearest_l1_point_from_nearest_l2_point_from_l1_centroid = x[labels == label_1][np.argmin(np.linalg.norm(x[labels == label_1] - nearest_l2_point_from_l1_centroid, axis=1))]
             nearest_l2_point_from_nearest_l1_point_from_l2_centroid = x[labels == label_2][np.argmin(np.linalg.norm(x[labels == label_2] - nearest_l1_point_from_l2_centroid, axis=1))]
-            # get both distances
-            distance_1 = np.linalg.norm(nearest_l1_point_from_l2_centroid - nearest_l1_point_from_nearest_l2_point_from_l1_centroid)
-            distance_2 = np.linalg.norm(nearest_l2_point_from_l1_centroid - nearest_l2_point_from_nearest_l1_point_from_l2_centroid)
+
+            distance_1 = np.linalg.norm(nearest_l1_point_from_l2_centroid - nearest_l2_point_from_nearest_l1_point_from_l2_centroid)
+            distance_2 = np.linalg.norm(nearest_l2_point_from_l1_centroid - nearest_l1_point_from_nearest_l2_point_from_l1_centroid)
             # get the best distance
             if distance_1 < best_distance:
                 best_distance = distance_1
                 best_target_label = label_2
             if distance_2 < best_distance:
                 best_distance = distance_2
-                best_target_label = label_1
+                best_target_label = label_2
         label_propagation_array.append([label_1, best_target_label])
         label_propagation_distances.append(best_distance)
     label_propagation_array = np.array(label_propagation_array)
     label_propagation_distances = np.array(label_propagation_distances)
-    print(label_propagation_array)
-    print(label_propagation_array.shape)
-    print(label_propagation_distances.shape)
     return reduce_label_propagation(label_propagation_array, label_propagation_distances)
 
 def get_label_propagation_array_full_nn_splitted(x, labels):
@@ -214,10 +210,10 @@ class NNHC:
             if i == 0:
                 label_propagation_array = get_label_propagation_unique_labels(x, labels)
             else:  
-                # label_propagation_array = get_label_propagation_array_centroid(x, labels)
-                # label_propagation_array = get_label_propagation_array_full_nn_splitted(x, labels)
-                # label_propagation_array = get_label_propagation_array_full_nn(x, labels)
-                label_propagation_array = get_label_propagation_array_nn_splitted_centroid(x, labels)
+                # label_propagation_array = get_label_propagation_array_full_nn(x, labels) # BAD PERFORMANCE (but working)
+                label_propagation_array = get_label_propagation_array_centroid(x, labels) # Not working well
+                # label_propagation_array = get_label_propagation_array_full_nn_splitted(x, labels)  # Good
+                # label_propagation_array = get_label_propagation_array_nn_splitted_centroid(x, labels) # To optimize with NearestNeighbors
     
             # add offset to propagation_order_array
             label_propagation_array[:, 1] += np.max(labels) + 1
@@ -251,11 +247,11 @@ class NNHC:
         return self
 
 if __name__ == "__main__":
-    datasets = get_datasets(n_samples=32, random_seed=42)
+    datasets = get_datasets(n_samples=10000, random_seed=42)
     for dataset_name, (dataset_points, clusters_count) in datasets.items():
         print(f"Clustering {dataset_name} with {clusters_count} clusters")
         nnhc = NNHC(n_clusters=clusters_count)
         nnhc.fit(x=dataset_points)
         color_map = generate_colors(len(nnhc.labels))
         cluster_screenshot(dataset_points, nnhc.y, path=f"outputs/{dataset_name}.png", color_map=color_map, show=False)
-        # break
+        break

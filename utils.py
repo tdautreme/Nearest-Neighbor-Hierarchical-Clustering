@@ -4,6 +4,8 @@ from sklearn import datasets
 import numpy as np
 import time
 import os
+from functools import wraps
+import time
 
 def get_datasets(n_samples = 1500, random_seed = None):
     if random_seed == None:
@@ -32,7 +34,7 @@ def generate_colors(nbr):
     RGB_tuples = map(lambda x: colorsys.hsv_to_rgb(*x), HSV_tuples)
     return list(RGB_tuples)
 
-def cluster_screenshot(x, y, color_map, path="output.png", show=True):
+def cluster_screenshot(x, y, color_map, path="output.png", show=False, print_numbers=False):
     if "/" in path:
         path_split = path.split("/")
         path_split.pop()
@@ -42,9 +44,26 @@ def cluster_screenshot(x, y, color_map, path="output.png", show=True):
 
     color_list = []
     for class_id in y:
-        color_list.append(color_map[class_id])        
-    plt.scatter(x[:,0], x[:,1], color = color_list)
+        color_list.append(color_map[class_id])  
+
+    # if print_numbers == False:  
+    plt.scatter(x[:,0], x[:,1], color=color_list)
+    if print_numbers == True:  
+        for i in range(len(x)):
+            plt.text(x[i,0], x[i,1], y[i], color=color_list[i], fontsize=10)
+        
     if show:
         plt.show()
     plt.savefig(path)
     plt.close()
+
+def timeit(func):
+    @wraps(func)
+    def timeit_wrapper(*args, **kwargs):
+        start_time = time.perf_counter()
+        result = func(*args, **kwargs)
+        end_time = time.perf_counter()
+        total_time = end_time - start_time
+        print(f'Function {func.__name__} Took {total_time:.4f} seconds')
+        return result
+    return timeit_wrapper

@@ -1,8 +1,14 @@
 from utils import get_datasets, cluster_screenshot, generate_colors
-from nnhc_centroids import NNHCCentroids
-from nnhc_full_nn_splitted_centroids import NNHCFullNNSplittedCentroids
-from nnhc_full_nn import NNHCFullNN
-from nnhc_full_nn_splitted import NNHCFullNNSplitted
+
+# NNHC base class can be optimized (see Optimisation ideas below)
+
+# less accurate but fast
+from nnhc_centroids import NNHCCentroids # fast
+from nnhc_full_nn_splitted_centroids import NNHCFullNNSplittedCentroids # less fast but more accurate (can be optimized)
+
+# most accurate but slow
+from nnhc_full_nn import NNHCFullNN # very slow (do not use)
+from nnhc_full_nn_splitted import NNHCFullNNSplitted # less slow (can be optimized)
 
 def get_nnhc(n_clusters):
     return NNHCCentroids(n_clusters=n_clusters)

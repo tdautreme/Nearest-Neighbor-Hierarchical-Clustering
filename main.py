@@ -13,6 +13,23 @@ import numba as nb
         make a fast version of NNHC wnich use the centroid of each label group as a point to compare with other centroid
 '''
 
+def reduce_label_propagation(label_propagation_array, distances=None):
+    # remove distances for process if needed
+    propagation_order_array = process_propagation(label_propagation_array)
+    print("propagation_order_array: ", propagation_order_array)
+    if distances is not None:
+        # label_propagation_array[:, 0] and propagation_order_array[:, 0] are the keys to sert indices in the good order
+        # label_propagation_array = [[0, 1], [1, 2], [2, 3], [3, 4], [4, 5]]
+        # propagation_order_array = [[0, 1], [2, 3], [4, 5], [1, 2], [3, 4]]
+        # indices = [0, 3, 1, 4, 2]
+        indices = np.searchsorted(label_propagation_array[:, 0], propagation_order_array[:, 0])
+        # use indices to sort propagation_order_array
+        propagation_order_array = propagation_order_array[indices]
+        # use distances to sort propagation_order_array
+        propagation_order_array = propagation_order_array[np.argsort(distances)]
+
+    return propagation_order_array
+
 @nb.njit(nopython=True)
 def custom_distance(x, y):
     '''
@@ -28,80 +45,190 @@ def custom_distance(x, y):
     '''
     # return np.linalg.norm(x - y)
 
+def get_label_propagation_array_full_nn(x, labels):
+    x_with_labels = np.concatenate((x, labels.reshape(-1, 1)), axis=1)
+    checkpoint_time = time.time()
+    neigh = NearestNeighbors(n_neighbors=1, algorithm="ball_tree", metric=custom_distance).fit(x_with_labels)
+    distances, indices = neigh.kneighbors(x_with_labels, return_distance=True)
+    print("NearestNeighbors time: ", time.time() - checkpoint_time)
+
+    indices = indices.reshape(-1)
+    distances = distances.reshape(-1)
+    neigh_original_indices = np.arange(len(distances))
+
+    all_differents_labels = np.unique(labels)
+
+    # create a label propagation array -> [[source_label, destination_label], ...]
+    label_propagation_array = []
+    label_propagation_distances = []
+
+    # foreach diffrent label, get the point that have the minimum distance with another point
+    for label in all_differents_labels:
+        # get index of points that have the label
+        point_indexes = np.where(labels == label)[0]
+
+        # filter distances using ids_np_int
+        filtered_distances = distances[point_indexes]
+        # find the index of the smallest distance in the filtered array
+        min_distance_index = np.argmin(filtered_distances)
+        # For getting the index in the original array, use original_indices
+        min_distance_original_index = neigh_original_indices[point_indexes[min_distance_index]]
+    
+        # Finaly, we have the value we wants. The point that have a different label and the minimum distance from a point of our label
+        best_target_label = labels[indices[min_distance_original_index]]
+        # We can also get the distance from this target and the source
+        best_distance = distances[min_distance_original_index]
+
+        # add the result to the label propagation array
+        label_propagation_array.append([label, best_target_label])
+        label_propagation_distances.append(best_distance)
+    label_propagation_array = np.array(label_propagation_array)
+    label_propagation_distances = np.array(label_propagation_distances)
+    return reduce_label_propagation(label_propagation_array, distances=label_propagation_distances)
+
+def get_label_propagation_unique_labels(x, labels, sort_distances=False):
+    checkpoint_time = time.time()
+    neigh = NearestNeighbors(n_neighbors=2, algorithm="ball_tree").fit(x)
+
+    if sort_distances:
+        distances, indices = neigh.kneighbors(x, return_distance=True)
+    else:
+        indices = neigh.kneighbors(x, return_distance=False)
+    print("NearestNeighbors time: ", time.time() - checkpoint_time)
+    # keep only the second column of indices and distances
+    indices = indices[:, 1]
+    label_propagation_array = labels[indices]
+    label_propagation_array = np.concatenate((labels.reshape(-1, 1), label_propagation_array.reshape(-1, 1)), axis=1)
+
+    if sort_distances:
+        distances = distances[:, 1]
+        return reduce_label_propagation(label_propagation_array, distances=distances)
+    else:
+        return reduce_label_propagation(label_propagation_array)
+
+def get_label_propagation_array_centroid(x, labels):
+    # reduce all x to the centroid of each label
+    all_differents_labels = np.unique(labels)
+    centroids = []
+    for label in all_differents_labels:
+        mask = labels == label
+        x_label = x[mask]
+        centroid = np.mean(x_label, axis=0)
+        centroids.append(centroid)
+    centroids = np.array(centroids)
+    return get_label_propagation_unique_labels(centroids, all_differents_labels, sort_distances=True)
+
+def get_label_propagation_array_nn_splitted_centroid(x, labels):
+    # reduce all x to the centroid of each label
+    all_differents_labels = np.unique(labels)
+    centroids = []
+    for label in all_differents_labels:
+        mask = labels == label
+        x_label = x[mask]
+        centroid = np.mean(x_label, axis=0)
+        centroids.append(centroid)
+    label_propagation_array = []
+    label_propagation_distances = []
+    all_differents_labels_len = len(all_differents_labels)
+    for i in range(all_differents_labels_len):
+        label_1 = all_differents_labels[i]
+        best_target_label = None
+        best_distance = np.inf
+        for j in range(all_differents_labels_len):
+            label_2 = all_differents_labels[j]
+            if label_1 == label_2:
+                continue
+            centroid_1 = centroids[i]
+            centroid_2 = centroids[j]
+            nearest_l1_point_from_l2_centroid = x[labels == label_1][np.argmin(np.linalg.norm(x[labels == label_1] - centroid_2, axis=1))]
+            nearest_l2_point_from_l1_centroid = x[labels == label_2][np.argmin(np.linalg.norm(x[labels == label_2] - centroid_1, axis=1))]
+            nearest_l1_point_from_nearest_l2_point_from_l1_centroid = x[labels == label_1][np.argmin(np.linalg.norm(x[labels == label_1] - nearest_l2_point_from_l1_centroid, axis=1))]
+            nearest_l2_point_from_nearest_l1_point_from_l2_centroid = x[labels == label_2][np.argmin(np.linalg.norm(x[labels == label_2] - nearest_l1_point_from_l2_centroid, axis=1))]
+            # get both distances
+            distance_1 = np.linalg.norm(nearest_l1_point_from_l2_centroid - nearest_l1_point_from_nearest_l2_point_from_l1_centroid)
+            distance_2 = np.linalg.norm(nearest_l2_point_from_l1_centroid - nearest_l2_point_from_nearest_l1_point_from_l2_centroid)
+            # get the best distance
+            if distance_1 < best_distance:
+                best_distance = distance_1
+                best_target_label = label_2
+            if distance_2 < best_distance:
+                best_distance = distance_2
+                best_target_label = label_1
+        label_propagation_array.append([label_1, best_target_label])
+        label_propagation_distances.append(best_distance)
+    label_propagation_array = np.array(label_propagation_array)
+    label_propagation_distances = np.array(label_propagation_distances)
+    print(label_propagation_array)
+    print(label_propagation_array.shape)
+    print(label_propagation_distances.shape)
+    return reduce_label_propagation(label_propagation_array, label_propagation_distances)
+
+def get_label_propagation_array_full_nn_splitted(x, labels):
+    checkpoint_time = time.time()
+    all_differents_labels = np.unique(labels)
+    label_propagation_array = []
+    indexes = np.arange(len(labels))
+    label_propagation_distances = []
+    for label in all_differents_labels:
+        # get index of points that have the label
+        mask = labels == label
+        x_label = x[mask]
+        x_not_label = x[~mask]
+        x_not_label_indexes = indexes[~mask]
+        neigh = NearestNeighbors(n_neighbors=1, algorithm="ball_tree").fit(x_not_label)
+        distances, indices = neigh.kneighbors(x_label, return_distance=True)
+        distances = distances.reshape(-1)
+        indices = indices.reshape(-1)
+
+        min_distance_index = np.argmin(distances)
+        x_not_label_index = x_not_label_indexes[indices[min_distance_index]]
+    
+        # Finaly, we have the value we wants. The point that have a different label and the minimum distance from a point of our label
+        best_target_label = labels[x_not_label_index]
+        # We can also get the distance from this target and the source
+        best_distance = distances[min_distance_index]
+
+        # add the result to the label propagation array
+        label_propagation_array.append([label, best_target_label])
+        label_propagation_distances.append(best_distance)
+    print("NearestNeighbors time: ", time.time() - checkpoint_time)
+    label_propagation_array = np.array(label_propagation_array)
+    label_propagation_distances = np.array(label_propagation_distances)
+    return reduce_label_propagation(label_propagation_array, distances=label_propagation_distances)
+
+
 class NNHC:
     def __init__(self, n_clusters=2):
         self.n_clusters = n_clusters
 
     def fit(self, x):
         x = np.array(x)
-        # add index in the last column
-        x = np.concatenate((x, np.arange(len(x)).reshape(-1, 1)), axis=1)
-        # add label in the last column
-        x = np.concatenate((x, np.arange(len(x)).reshape(-1, 1)), axis=1)
+        labels = np.arange(len(x));
         
+        i = 0
         while True:
-            # get all differents labels without duplicates in x
-            '''
-                Here is the problem, check at custom_distance method
-            '''
-            x_without_ids = np.delete(x, -2, axis=1)
-            checkpoint_time = time.time()
-            neigh = NearestNeighbors(n_neighbors=1, algorithm="ball_tree", metric=custom_distance).fit(x_without_ids)
-            distances, indices = neigh.kneighbors(x_without_ids, return_distance=True)
-            print("NearestNeighbors time: ", time.time() - checkpoint_time)
+            all_differents_labels = np.unique(labels)
+            print("labels count: ", len(all_differents_labels))
 
-            indices = indices.reshape(-1)
-            distances = distances.reshape(-1)
-            neigh_original_indices = np.arange(len(distances))
-
-            all_differents_labels = np.unique(x[:, -1])
-
-            # create a label propagation array -> [[source_label, destination_label], ...]
-            label_propagation_array = []
-
-            # foreach diffrent label, get the point that have the minimum distance with another point
-            for label in all_differents_labels:
-                # get points that have the label
-                points_with_label = x[x[:, -1] == label]
-                # get their ids
-                ids = points_with_label[:, -2]
-                ids_np_int = np.array(ids, dtype=np.int32)
-
-                # filter distances using ids_np_int
-                filtered_distances = distances[ids_np_int]
-                # find the index of the smallest distance in the filtered array
-                min_distance_index = np.argmin(filtered_distances)
-                # For getting the index in the original array, use original_indices
-                min_distance_original_index = neigh_original_indices[ids_np_int[min_distance_index]]
-            
-                # Finaly, we have the value we wants. The point that have a different label and the minimum distance from a point of our label
-                best_target_label = x[indices[min_distance_original_index], -1]
-                # We can also get the distance from this target and the source
-                best_distance = distances[min_distance_original_index]
+            # get the label_propagation_array
+            if i == 0:
+                label_propagation_array = get_label_propagation_unique_labels(x, labels)
+            else:  
+                # label_propagation_array = get_label_propagation_array_centroid(x, labels)
+                # label_propagation_array = get_label_propagation_array_full_nn_splitted(x, labels)
+                # label_propagation_array = get_label_propagation_array_full_nn(x, labels)
+                label_propagation_array = get_label_propagation_array_nn_splitted_centroid(x, labels)
     
-                # add the result to the label propagation array
-                label_propagation_array.append([label, best_target_label, best_distance])
-
-            # reduce the label propagation array to the best label propagation
-            label_propagation_array = np.array(label_propagation_array)
-            propagation_order_array = process_propagation(label_propagation_array[:, :-1])
-
-            # Add distance to propagation_order_array from label_propagation_array where [:, 0] are the same in each array 
-            source_label_to_distance = {label: distance for label, _, distance in label_propagation_array}
-            # add column for distance
-            propagation_order_array = np.concatenate((propagation_order_array, np.zeros((len(propagation_order_array), 1))), axis=1)
-            propagation_order_array[:, 2] = [source_label_to_distance[label] for label in propagation_order_array[:, 0]]
-            # sort by distance
-            propagation_order_array = propagation_order_array[propagation_order_array[:, 2].argsort()]
             # add offset to propagation_order_array
-            propagation_order_array[:, 1] += np.max(x[:, -1]) + 1
+            label_propagation_array[:, 1] += np.max(labels) + 1
 
             current_label_count = len(all_differents_labels)
             new_diffrent_labels = []
             # foreach label propagation, update the label in x
             end = False
-            for source_label, target_label, _ in propagation_order_array:
-                x[x[:, -1] == source_label, -1] = target_label
+            for source_label, target_label in label_propagation_array:
+                # x[x[:, -1] == source_label, -1] = target_label
+                labels[labels == source_label] = target_label
                 current_label_count -= 1
                 if target_label not in new_diffrent_labels:
                     new_diffrent_labels.append(target_label)
@@ -112,8 +239,9 @@ class NNHC:
                     break
             if end:
                 break
+            i += 1
         
-        y = x[:, -1]
+        y = labels
         all_differents_labels = np.unique(y)
         # normalize label using indices (liek 0, 1, 2, 3, 4, ...)
         for i, label in enumerate(all_differents_labels):
@@ -123,12 +251,11 @@ class NNHC:
         return self
 
 if __name__ == "__main__":
-    datasets = get_datasets(n_samples=10000, random_seed=42)
+    datasets = get_datasets(n_samples=32, random_seed=42)
     for dataset_name, (dataset_points, clusters_count) in datasets.items():
         print(f"Clustering {dataset_name} with {clusters_count} clusters")
         nnhc = NNHC(n_clusters=clusters_count)
         nnhc.fit(x=dataset_points)
         color_map = generate_colors(len(nnhc.labels))
         cluster_screenshot(dataset_points, nnhc.y, path=f"outputs/{dataset_name}.png", color_map=color_map, show=False)
-        print("")
-        
+        # break

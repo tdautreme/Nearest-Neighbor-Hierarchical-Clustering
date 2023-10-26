@@ -3,6 +3,13 @@ import numpy as np
 from utils import timeit
 from union_find import process_propagation, union_find
 from sklearn.neighbors import NearestNeighbors
+import numba as nb
+
+# import folder cython
+import sys
+sys.path.insert(0, './cython')
+
+from custom_distance_cython import custom_distance_cython # 28s
 
 '''
     Optimisation ideas:
@@ -11,6 +18,24 @@ from sklearn.neighbors import NearestNeighbors
 
         make a fast version of NNHC wnich use the centroid of each label group as a point to compare with other centroid
 '''
+@nb.jit(nopython=True)
+def custom_distance(x, y): # 6 second with nb
+    '''
+        /!\ this methods take to much time to compute, it's the last thing to optimize to make a good clusturing algorithm
+    '''
+    # if same label, distance is infinite because we don't want to merge points with same label
+    if x[-1] == y[-1]:
+        return np.inf
+    return np.linalg.norm(x[:-1] - y[:-1])
+
+    '''
+        This is fast but we can't compare labels...
+    '''
+    # return np.linalg.norm(x - y)
+@nb.jit(nopython=True)
+def custom_distance2(a, b): # 3 with nb, 8 without nb
+    # mikowski distance
+    return np.linalg.norm(a - b, ord=2)
 
 @timeit
 def reduce_label_propagation(label_propagation_array, distances=None):
@@ -33,7 +58,11 @@ def reduce_label_propagation(label_propagation_array, distances=None):
 @timeit
 def get_label_propagation_unique_labels(x, y, sort_distances=False):
     checkpoint_time = time.time()
-    neigh = NearestNeighbors(n_neighbors=2, algorithm="ball_tree").fit(x)
+    # metric = custom_distance_cython
+    # metric = custom_distance
+    # metric = custom_distance2
+    metric = "minkowski"
+    neigh = NearestNeighbors(n_neighbors=2, algorithm="ball_tree", metric=metric).fit(x)
 
     if sort_distances:
         distances, indices = neigh.kneighbors(x, return_distance=True)

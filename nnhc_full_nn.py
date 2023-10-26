@@ -6,6 +6,11 @@ from sklearn.neighbors import NearestNeighbors
 import time
 import numba as nb
 
+import sys
+sys.path.insert(0, './cython')
+
+from custom_distance_cython import custom_distance_cython
+
 @nb.njit(nopython=True)
 def custom_distance(x, y):
     '''
@@ -21,11 +26,14 @@ def custom_distance(x, y):
     '''
     # return np.linalg.norm(x - y)
 
+
 @timeit
 def get_label_propagation_array_full_nn(x, y):
     x_with_labels = np.concatenate((x, y.reshape(-1, 1)), axis=1)
+    # x_with_labels = x
     checkpoint_time = time.time()
-    neigh = NearestNeighbors(n_neighbors=1, algorithm="ball_tree", metric=custom_distance).fit(x_with_labels)
+    print("NearestNeighbors start")
+    neigh = NearestNeighbors(n_neighbors=1, algorithm="ball_tree", metric=custom_distance_cython).fit(x_with_labels)
     distances, indices = neigh.kneighbors(x_with_labels, return_distance=True)
     print("NearestNeighbors time: ", time.time() - checkpoint_time)
 

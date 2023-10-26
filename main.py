@@ -11,13 +11,13 @@ from nnhc_full_nn import NNHCFullNN # very slow (do not use)
 from nnhc_full_nn_splitted import NNHCFullNNSplitted # less slow (can be optimized)
 
 def get_nnhc(n_clusters):
-    return NNHCCentroids(n_clusters=n_clusters)
+    # return NNHCCentroids(n_clusters=n_clusters)
     # return NNHCFullNNSplittedCentroids(n_clusters=n_clusters)
-    # return NNHCFullNN(n_clusters=n_clusters)
+    return NNHCFullNN(n_clusters=n_clusters)
     # return NNHCFullNNSplitted(n_clusters=n_clusters)
 
 if __name__ == "__main__":
-    datasets = get_datasets(n_samples=50000, random_seed=42)
+    datasets = get_datasets(n_samples=10000, random_seed=42)
     for dataset_name, (x, clusters_count) in datasets.items():
         # if dataset_name != "aniso":
             # continue
@@ -27,7 +27,7 @@ if __name__ == "__main__":
         color_map = generate_colors(len(nnhc.labels))
         cluster_screenshot(x, nnhc.y, path=f"outputs/{dataset_name}.png", color_map=color_map, show=False, print_numbers=False)
         # cluster_screenshot(nnhc.centroids, nnhc.labels, path=f"outputs/{dataset_name}_centroids.png", color_map=color_map, show=False, print_numbers=True)
-        # break
+        break
         
 '''
     Optimisation ideas:
